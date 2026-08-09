@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
+import json
+import os
 
 from app.schemas import (
     StartInterviewRequest,
@@ -24,13 +26,29 @@ app.add_middleware(
     allow_headers=["*"],  # Allows all headers
 )
 
+# Load candidates JSON once on startup
+CANDIDATES_DATA = []
+candidates_file = os.path.join(os.path.dirname(__file__), "..", "candidates.json") # Adjust path if stored elsewhere
+if os.path.exists(candidates_file):
+    with open(candidates_file, "r") as f:
+        CANDIDATES_DATA = json.load(f)
+
 
 @app.get("/")
 async def root():
     return {"message": "AI Technical Interviewer API is running"}
 
 
-@app.post("/interview/start")
+# 1. NEW ENDPOINT: Serves all 20 candidates to the frontend grid
+@app.get("/api/candidates")
+async def get_candidates():
+    if not CANDIDATES_DATA:
+        # Fallback if file path differs, return empty list or dummy array
+        raise HTTPException(status_code=404, detail="Candidates data not found on server.")
+    return CANDIDATES_DATA
+
+
+@app.post("/api/interview/start")
 async def start_interview(req: StartInterviewRequest):
     session = session_store.create_session(
         session_id=req.sessionId,
@@ -40,7 +58,7 @@ async def start_interview(req: StartInterviewRequest):
     return {"reply": greeting, "done": False}
 
 
-@app.post("/interview/chat")
+@app.post("/api/interview/chat")
 async def chat_interview(req: ChatRequest):
     session = session_store.get_session(req.sessionId)
     if not session:
@@ -61,7 +79,7 @@ async def chat_interview(req: ChatRequest):
     return {"reply": reply_text, "done": is_done}
 
 
-@app.get("/interview/feedback/{session_id}")
+@app.get("/api/interview/feedback/{session_id}")
 async def get_feedback(session_id: str):
     session = session_store.get_session(session_id)
     if not session:
